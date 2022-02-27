@@ -1,10 +1,10 @@
 # words
 
-List all unique words (or keywords) in a file
+List all unique (key) words in a file
 
 ## TODO
 
-- Command line option to allow recording either lines
-  on which words occur, or only number of occurrences.
-- Set delimiters from command line.
-- c99 compliant argument parsing.
+- Case sensitivity.
+- Delimiters.
+- Read multiple files.
+- Read stdin if no files are given.
