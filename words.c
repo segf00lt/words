@@ -2,12 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 #define STB_DS_IMPLEMENTATION
 #define STBDS_SIPHASH_2_4
 #include "stb_ds.h"
 
-#define USAGE "Usage: %s [-HCh] [file...]\n"
+#define USAGE "Usage: %s [-iHCh] [file...]\n"
 
 #define LENGTH(x) (sizeof(x) / sizeof(x[0]))
 
@@ -25,6 +26,7 @@ char* progname = NULL;
 
 size_t tablelen = 0;
 size_t itemsize = 0;
+bool insentitive = false;
 
 static inline char*
 strtolower(char* s) {
@@ -150,7 +152,8 @@ tabulate(FILE* fp, void* tbl, void*(*rec)(void*, char*, void*)) {
 
 	for(;fgets(buf, LENGTH(buf), fp) != NULL; ++line) {
 		for(wd = strtok(buf, delims); wd != NULL; wd = strtok(NULL, delims)) {
-			//wd = strtolower(wd);
+			if(insentitive)
+				wd = strtolower(wd);
 
 			tbl = rec(tbl, wd, (void*)(&line));
 		}
@@ -174,6 +177,9 @@ int main(int argc, char* argv[]) {
 	size_t optind;
 	for(optind = 1; optind < argc && argv[optind][0] == '-'; ++optind) {
 		switch(argv[optind][1]) {
+			case 'i':
+				insentitive = true;
+				break;
 			case 'H':
 				sh_new_arena(h_tbl);
 				tbl = (void*)h_tbl;
@@ -228,19 +234,22 @@ int main(int argc, char* argv[]) {
 		cleanup = countcleanup;
 	}
 
+	FILE* fp = NULL;
+
 	if(optind == argc) {
-		fprintf(stderr, "%s: no file given\n", progname);
+		fp = stdin;
+	} else if(optind < (argc - 1)) {
+		fprintf(stderr, "%s: too many arguments\n", progname);
+		cleanup(tbl);
+		exit(1);
+	} else if((fp = fopen(argv[optind], "r")) == NULL) {
+		fprintf(stderr, "%s: %s: no such file or directory\n", progname, argv[optind]);
 		cleanup(tbl);
 		exit(1);
 	}
-
-	FILE* fp = fopen(argv[optind], "r");
-
-	if(fp == NULL) {
-		fprintf(stderr, "%s: %s: no such file\n", progname, argv[optind]);
-		cleanup(tbl);
-		exit(1);
-	}
+	/*
+	 * TODO: loop for reading multiple files
+	 */
 
 	tbl = tabulate(fp, tbl, rec);
 
