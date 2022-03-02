@@ -4,5 +4,6 @@ List all unique (key) words in a file
 
 ## TODO
 
-- Read multiple files (for now can be done with: `cat files... | words`).
 - Set delimiters.
+- Make functions re-entrant by passing a pointer to `struct context` via `arg`
+  (just because).

@@ -8,16 +8,14 @@
 #define STBDS_SIPHASH_2_4
 #include "stb_ds.h"
 
-#define USAGE "Usage: %s [-iHCh] [file...]\n"
+#define USAGE "Usage: %s [-iHNh] [file...]\n"
 
 #define LENGTH(x) (sizeof(x) / sizeof(x[0]))
-
-#define LINE_LEN 256
 
 enum {
 	WORDS,
 	HISTOGRAM,
-	COUNTOCCUR,
+	NOCCUR,
 } mode = WORDS;
 
 char* delims = " \t\n,.!@`~#$%^&()*-=+[]{};:\"/?><";
@@ -35,16 +33,16 @@ strtolower(char* s) {
 	return s;
 }
 
-typedef struct { char* key; size_t value; } count_t;
+typedef struct { char* key; size_t value; } noccur_t;
 typedef struct { char* key; size_t* value; } hist_t;
 
-typedef count_t* count_table_t;
+typedef noccur_t* noccur_table_t;
 typedef hist_t* hist_table_t;
 
 int
-countcmp(const void* a, const void* b) {
-	count_t* c_a = (count_t*)a;
-	count_t* c_b = (count_t*)b;
+noccurcmp(const void* a, const void* b) {
+	noccur_t* c_a = (noccur_t*)a;
+	noccur_t* c_b = (noccur_t*)b;
 	return c_a->value <= c_b->value;
 }
 
@@ -56,8 +54,8 @@ histcmp(const void* a, const void* b) {
 }
 
 void*
-countrec(void* tbl, char* wd, void* arg) {
-	count_table_t c_tbl = (count_table_t)tbl;
+noccurrec(void* tbl, char* wd, void* arg) {
+	noccur_table_t c_tbl = (noccur_table_t)tbl;
 	size_t n = shget(c_tbl, wd);
 	shput(c_tbl, wd, n + 1);
 
@@ -81,7 +79,7 @@ histrec(void* tbl, char* wd, void* arg) {
 
 void
 wordrpt(void* tbl) {
-	count_table_t w_tbl = (count_table_t)tbl;
+	noccur_table_t w_tbl = (noccur_table_t)tbl;
 
 	for(size_t i = 0; i < shlen(w_tbl); ++i) {
 		char* word = w_tbl[i].key;
@@ -90,13 +88,13 @@ wordrpt(void* tbl) {
 }
 
 void
-countrpt(void* tbl) {
-	count_table_t c_tbl = (count_table_t)tbl;
+noccurrpt(void* tbl) {
+	noccur_table_t c_tbl = (noccur_table_t)tbl;
 
 	for(size_t i = 0; i < shlen(c_tbl); ++i) {
 		char* word = c_tbl[i].key;
-		size_t count = c_tbl[i].value;
-		printf("%zu:%s\n", count, word);
+		size_t noccur = c_tbl[i].value;
+		printf("%zu:%s\n", noccur, word);
 	}
 }
 
@@ -123,11 +121,11 @@ histrpt(void* tbl) {
 }
 
 void
-countcleanup(void* tbl) {
+noccurcleanup(void* tbl) {
 	if(tbl == NULL)
 		return;
 
-	count_table_t c_tbl = (count_table_t)tbl;
+	noccur_table_t c_tbl = (noccur_table_t)tbl;
 	shfree(c_tbl);
 }
 
@@ -145,7 +143,7 @@ histcleanup(void* tbl) {
 
 void*
 tabulate(FILE* fp, void* tbl, void*(*rec)(void*, char*, void*)) {
-	char buf[LINE_LEN];
+	char buf[BUFSIZ];
 	char* wd = NULL;
 
 	size_t line = 1;
@@ -170,7 +168,9 @@ int main(int argc, char* argv[]) {
 	void(*rpt)(void*) = NULL;
 	void(*cleanup)(void*) = NULL;
 
-	count_table_t c_tbl = NULL;
+	FILE* fp = NULL;
+
+	noccur_table_t c_tbl = NULL;
 	hist_table_t h_tbl = NULL;
 
 	/* parse arguments */
@@ -194,19 +194,19 @@ int main(int argc, char* argv[]) {
 
 				mode = HISTOGRAM;
 				break;
-			case 'C':
+			case 'N':
 				sh_new_arena(c_tbl);
 				tbl = (void*)c_tbl;
 
-				itemsize = sizeof(count_t);
+				itemsize = sizeof(noccur_t);
 
-				rec = countrec;
-				cmp = countcmp;
-				rpt = countrpt;
+				rec = noccurrec;
+				cmp = noccurcmp;
+				rpt = noccurrpt;
 
-				cleanup = countcleanup;
+				cleanup = noccurcleanup;
 
-				mode = COUNTOCCUR;
+				mode = NOCCUR;
 				break;
 			case 'h':
 				fprintf(stderr, USAGE, progname);
@@ -225,41 +225,36 @@ int main(int argc, char* argv[]) {
 		sh_new_arena(c_tbl);
 		tbl = (void*)c_tbl;
 
-		itemsize = sizeof(count_t);
+		itemsize = sizeof(noccur_t);
 
-		rec = countrec;
-		cmp = countcmp;
+		rec = noccurrec;
+		cmp = noccurcmp;
 		rpt = wordrpt;
 
-		cleanup = countcleanup;
+		cleanup = noccurcleanup;
 	}
 
-	FILE* fp = NULL;
+	if(optind == argc)
+		tbl = tabulate(stdin, tbl, rec);
 
-	if(optind == argc) {
-		fp = stdin;
-	} else if(optind < (argc - 1)) {
-		fprintf(stderr, "%s: too many arguments\n", progname);
-		cleanup(tbl);
-		exit(1);
-	} else if((fp = fopen(argv[optind], "r")) == NULL) {
-		fprintf(stderr, "%s: %s: no such file or directory\n", progname, argv[optind]);
-		cleanup(tbl);
-		exit(1);
+	while(optind < argc) {
+		fp = fopen(argv[optind++], "r");
+
+		if(fp == NULL) {
+			fprintf(stderr, "%s: %s: no such file or directory\n", progname, argv[optind-1]);
+			cleanup(tbl);
+			exit(1);
+		}
+
+		tbl = tabulate(fp, tbl, rec);
+		fclose(fp);
 	}
-	/*
-	 * TODO: loop for reading multiple files
-	 */
-
-	tbl = tabulate(fp, tbl, rec);
 
 	qsort(tbl, tablelen, itemsize, cmp);
 
 	rpt(tbl);
 
 	cleanup(tbl);
-
-	fclose(fp);
 
 	return 0;
 }
