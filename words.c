@@ -8,7 +8,14 @@
 #define STBDS_SIPHASH_2_4
 #include "stb_ds.h"
 
-#define USAGE "Usage: %s [-iHNh] [file...]\n"
+#define USAGE \
+	"USAGE: %s [-iedHNh] [FILE...]\n" \
+	"-i		case insentitive\n" \
+	"-e STRINGS	exclude STRINGS\n" \
+	"-d human|c	delimiter convention\n" \
+	"-H		print histogram\n" \
+	"-N		print number of occurences\n" \
+	"-h		print USAGE\n"
 
 #define LENGTH(x) (sizeof(x) / sizeof(x[0]))
 
@@ -18,13 +25,16 @@ enum {
 	NOCCUR,
 } mode = WORDS;
 
-char* delims = " \t\n,.!@`~#$%^&()*-=+[]{};:\"/?><";
+#define C_DELIMS  " \t\n\r,.!@`~#$%^&()*-=+[]{};:\'\"/?><"
+#define HUMAN_DELIMS  " \t\n\r,.!`~#^()*=+[]{};:\"/?><"
 
+char* delims = HUMAN_DELIMS;
+char* exclude = NULL;
 char* progname = NULL;
+bool insentitive = false;
 
 size_t tablelen = 0;
 size_t itemsize = 0;
-bool insentitive = false;
 
 static inline char*
 strtolower(char* s) {
@@ -153,6 +163,9 @@ tabulate(FILE* fp, void* tbl, void*(*rec)(void*, char*, void*)) {
 			if(insentitive)
 				wd = strtolower(wd);
 
+			if(exclude && strstr(exclude, wd))
+				continue;
+
 			tbl = rec(tbl, wd, (void*)(&line));
 		}
 	}
@@ -179,6 +192,33 @@ int main(int argc, char* argv[]) {
 		switch(argv[optind][1]) {
 			case 'i':
 				insentitive = true;
+				break;
+			case 'e':
+				if(++optind == argc) {
+					fprintf(stderr, "%s: '-e' requires an argument\n%s", progname, USAGE);
+					if(cleanup != NULL) cleanup(tbl);
+					exit(1);
+				}
+
+				exclude = argv[optind];
+				break;
+			case 'd':
+				if(++optind == argc) {
+					fprintf(stderr, "%s: '-d' requires an argument\n%s", progname, USAGE);
+					if(cleanup != NULL) cleanup(tbl);
+					exit(1);
+				}
+
+				if(strcmp(argv[optind], "c") == 0)
+					delims = C_DELIMS;
+				else if(strcmp(argv[optind], "human") == 0)
+					delims = HUMAN_DELIMS;
+				else {
+					fprintf(stderr, "%s: unknown argument to '-d'\n%s", progname, USAGE);
+					if(cleanup != NULL) cleanup(tbl);
+					exit(1);
+				}
+
 				break;
 			case 'H':
 				sh_new_arena(h_tbl);
@@ -210,13 +250,11 @@ int main(int argc, char* argv[]) {
 				break;
 			case 'h':
 				fprintf(stderr, USAGE, progname);
-				if(cleanup != NULL)
-					cleanup(tbl);
+				if(cleanup != NULL) cleanup(tbl);
 				exit(1);
 			default:
-				fprintf(stderr, "%s: unknown argument %s\n", progname, argv[optind]);
-				if(cleanup != NULL)
-					cleanup(tbl);
+				fprintf(stderr, "%s: unknown argument %s\n%s", progname, argv[optind], USAGE);
+				if(cleanup != NULL) cleanup(tbl);
 				exit(1);
 		}
 	}
